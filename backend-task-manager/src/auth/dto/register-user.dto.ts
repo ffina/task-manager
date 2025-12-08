@@ -1,12 +1,26 @@
-import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  MinLength,
+  IsString,
+  IsOptional,
+} from 'class-validator';
 
 export class RegisterUserDto {
-  @IsNotEmpty({ message: 'Email tidak boleh kosong' })
-  @IsEmail({}, { message: 'Format email tidak valid' })
+  @IsNotEmpty({ message: 'Email is required' })
+  @IsEmail({}, { message: 'Invalid email format' })
   email: string;
 
-  // Memastikan password memiliki MinLength untuk Strength
-  @IsNotEmpty({ message: 'Password tidak boleh kosong' })
-  @MinLength(8, { message: 'Password minimal 8 karakter' }) 
+  @IsNotEmpty({ message: 'Username is required' })
+  @IsString()
+  @MinLength(3, { message: 'Username must be at least 3 characters' })
+  username: string;
+
+  @IsNotEmpty({ message: 'Password is required' })
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
   password: string;
+
+  @IsOptional()
+  @IsString()
+  fullName?: string;
 }

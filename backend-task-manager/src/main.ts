@@ -1,10 +1,17 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import helmet from 'helmet'; // Instalasikan: npm install --save helmet
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Serve static files from uploads directory
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   // 4. Security Best Practices
   // Menggunakan helmet untuk Headers Keamanan (XSS, Clickjacking, dll.)
@@ -20,13 +27,19 @@ async function bootstrap() {
     }),
   );
 
-  // Proper CORS Configuration (Ganti origin dengan alamat frontend-mu)
+  // Proper CORS Configuration
   app.enableCors({
-    origin: 'http://localhost:5173', // Ganti dengan URL frontend-mu
+    origin: 'http://localhost:5173',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
 
-  await app.listen(3001); // Port default NestJS 3000, ubah agar tidak bentrok dengan frontend
+  // Add API prefix
+  app.setGlobalPrefix('api');
+
+  await app.listen(3001);
+  console.log('🚀 Backend server running on http://localhost:3001');
+  console.log('📝 API available at http://localhost:3001/api');
+  console.log('📁 Static files served from /uploads');
 }
 bootstrap();

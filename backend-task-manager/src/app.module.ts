@@ -1,34 +1,40 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { TaskModule } from './task/task.module';
-// Import modul lain di sini
+import { CategoryModule } from './category/category.module';
+import { UserModule } from './user/user.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { EmailModule } from './email/email.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
   imports: [
-    // 1. Konfigurasi Lingkungan (Ambil dari .env)
+    // Global Configuration
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
-    
-    // 2. Konfigurasi TypeORM (Database)
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'sqlite',
-        database: configService.get<string>('DATABASE_NAME'), // task-manager.sqlite
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: true, // HANYA gunakan true di development!
-      }),
-      inject: [ConfigService],
-    }),
 
-    // 3. Modul Otentikasi
+    // Rate limiting
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 10,
+      },
+    ]),
+
+    // Database
+    PrismaModule,
+
+    // Feature Modules
     AuthModule,
-
     TaskModule,
+    CategoryModule,
+    UserModule,
+    EmailModule,
+    SchedulerModule,
   ],
   controllers: [],
   providers: [],

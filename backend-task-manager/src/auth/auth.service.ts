@@ -1,93 +1,107 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt'; // Secure Hashing
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-
-import { User } from './user.entity';
+import { PrismaService } from '../prisma/prisma.service';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
+    private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
 
   // 1. User Registration
-  async register(registerDto: RegisterUserDto): Promise<User> {
-    const { email, password } = registerDto;
-    
-    // Cek apakah user sudah ada
-    const exists = await this.usersRepository.findOne({ where: { email } });
-    if (exists) {
-      throw new BadRequestException('Email sudah terdaftar.');
+  async register(registerDto: RegisterUserDto) {
+    const { email, password, username, fullName } = registerDto;
+
+    // Check if user already exists
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ email }, { username }],
+      },
+    });
+
+    if (existingUser) {
+      throw new BadRequestException('Email or username already registered.');
     }
 
     // Secure Hashing (minimal 10 rounds)
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newUser = this.usersRepository.create({
-      email,
-      password: hashedPassword, // Store passwords using secure hashing
+    const newUser = await this.prisma.user.create({
+      data: {
+        email,
+        username,
+        fullName,
+        password: hashedPassword,
+      },
     });
 
-    return this.usersRepository.save(newUser);
+    // Remove password from response
+    const { password: _, ...result } = newUser;
+    return result;
   }
 
-  // 2. User Login (Validasi & Pembuatan JWT)
-  async login(loginDto: LoginUserDto): Promise<{ accessToken: string }> {
+  // 2. User Login (Validation & JWT Creation)
+  async login(
+    loginDto: LoginUserDto,
+  ): Promise<{ accessToken: string; user: any }> {
     const { email, password } = loginDto;
 
-    // Temukan user
-    const user = await this.usersRepository.findOne({ where: { email } });
+    // Find user
+    const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new UnauthorizedException('Kredensial tidak valid.');
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
-    // Bandingkan password
+    // Compare password
     const isPasswordMatch = await bcrypt.compare(password, user.password);
     if (!isPasswordMatch) {
-      throw new UnauthorizedException('Kredensial tidak valid.');
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
-    // Jika berhasil, buat Payload JWT
-    const payload = { 
-      email: user.email, 
+    // Create JWT Payload
+    const payload = {
+      email: user.email,
       sub: user.id,
-      role: user.role // Sertakan role untuk RBAC
+      username: user.username,
     };
 
-    // Generate access tokens upon successful login
+    // Generate access token
     const accessToken = this.jwtService.sign(payload, {
-        secret: this.configService.get('JWT_SECRET'),
-        expiresIn: this.configService.get('JWT_EXPIRATION_TIME'), // token expiration
+      secret: this.configService.get('JWT_SECRET'),
+      expiresIn: this.configService.get('JWT_EXPIRATION_TIME'),
     });
 
-    // Implementasi Refresh Token:
-    // Jika kamu ingin mengimplementasikan Refresh Token, kamu perlu:
-    // 1. Membuat dan menyimpan refresh token di DB
-    // 2. Mengembalikannya bersama access token
-    // 3. Membuat endpoint /auth/refresh
-    
-    return { accessToken };
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
+
+    return {
+      accessToken,
+      user: userWithoutPassword,
+    };
   }
-  
-  // Method untuk digunakan oleh JwtStrategy
-  async validateUser(id: number): Promise<User> {
-        const user = await this.usersRepository.findOneBy({ id });
 
-        if (!user) {
-            // Seharusnya tidak terjadi jika dipanggil dari JwtStrategy yang sudah memvalidasi token
-            // Tapi kita harus menangani kemungkinan TypeORM mengembalikan null
-            throw new UnauthorizedException('Pengguna tidak ditemukan.');
-        }
+  // Validate user by ID (used by JWT strategy)
+  async validateUser(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
 
-        return user;
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
     }
+
+    const { password: _, ...result } = user;
+    return result;
+  }
 }
